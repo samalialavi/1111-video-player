@@ -13,7 +13,13 @@ const VIDEOS = {
  v2: 'https://samalialavi.github.io/1111-video-player/videos/video2.mp4',
  v3: 'https://samalialavi.github.io/1111-video-player/videos/video3.mp4'
 };
-let lastId='',selected='',busy=false;
+let lastId='',selected='',busy=false,initialized=false;
+const SOUND_SETTING='1111-player-sound-enabled';
+let soundEnabled=false;
+try{soundEnabled=localStorage.getItem(SOUND_SETTING)==='true';}catch(e){}
+video.muted=!soundEnabled;
+function updateSoundButton(){document.getElementById('sound').textContent=soundEnabled?'Disable sound':'Enable sound';}
+updateSoundButton();
 // Common red-button mappings. Your kiosk app must forward remote keys to the page.
 const RED_KEY_CODES = [403, 183];
 const show=text=>{message.textContent=text;};
@@ -44,11 +50,22 @@ video.addEventListener('waiting',blackScreen);
 video.addEventListener('stalled',blackScreen);
 
 document.getElementById('fullscreen').onclick=()=>document.documentElement.requestFullscreen?.().catch(()=>show('Enable fullscreen in your kiosk app settings'));
-document.getElementById('sound').onclick=async()=>{video.muted=false;try{if(selected)await video.play();show('Sound enabled; ready for commands')}catch(e){show('Allow autoplay with sound in your kiosk app settings')}};
+document.getElementById('sound').onclick=()=>{
+ soundEnabled=!soundEnabled;
+ video.muted=!soundEnabled;
+ try{localStorage.setItem(SOUND_SETTING,String(soundEnabled));}
+ catch(e){show('Browser storage is unavailable; sound preference cannot be saved.');updateSoundButton();return;}
+ updateSoundButton();
+ show(soundEnabled?'Sound enabled and saved':'Sound disabled and saved');
+};
 video.addEventListener('ended',()=>{blackScreen();show('Ready for commands');});
 video.addEventListener('error',()=>{blackScreen();show('Video error: check the video URL and internet connection');});
 async function apply(c){
- if(!c || c.ok!==true || typeof c.commandId!=='string' || c.commandId===lastId)return;
+ if(!c || c.ok!==true || typeof c.commandId!=='string')return;
+ // First successful response is a baseline, never a playback request.
+ // Reset this baseline on each page load, even when the server has an old play command.
+ if(!initialized){initialized=true;lastId=c.commandId;blackScreen();show('Connected; ready for a new command');return;}
+ if(c.commandId===lastId)return;
  if(c.action==='stop'){blackScreen();video.pause();try{video.currentTime=0}catch(e){};lastId=c.commandId;show('Ready for commands');return;}
  if(!['play','replay'].includes(c.action))return;
  blackScreen();

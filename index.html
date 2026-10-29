@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en" dir="ltr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>11:11 Video Player</title>
+<style>html,body{margin:0;width:100%;height:100%;background:#000;color:white;font-family:Arial}video{width:100%;height:100%;object-fit:contain}#panel{position:fixed;bottom:15px;right:15px;padding:12px;background:#151515dd;border-radius:10px;font-size:14px}button{padding:10px;margin:4px;border:0;border-radius:6px;cursor:pointer}#message{max-width:75vw}</style>
+<video id="video" playsinline preload="auto" muted></video>
+<div id="panel"><div id="message">Connecting…</div><button id="sound">Enable sound</button><button id="fullscreen">Fullscreen</button></div>
+<script>
+// REQUIRED: paste the Production URL from the n8n Kiosk Player Poll node here.
+const ENDPOINT='https://n8n.sam.ge/webhook/kiosk-player';
+const KEY="rSe67zkCJHGskLCGacW5ngBvkSusEgMI1aHuIMBt2YM";
+const video=document.getElementById('video'),message=document.getElementById('message'),panel=document.getElementById('panel');
+const VIDEOS = {
+ v1: 'https://samalialavi.github.io/1111-video-player/videos/video1.mp4',
+ v2: 'https://samalialavi.github.io/1111-video-player/videos/video2.mp4',
+ v3: 'https://samalialavi.github.io/1111-video-player/videos/video3.mp4'
+};
+let lastId='',selected='',busy=false;
+const show=text=>{message.textContent=text;panel.style.opacity='1'};
+document.getElementById('fullscreen').onclick=()=>document.documentElement.requestFullscreen?.().catch(()=>show('Enable fullscreen in your kiosk app settings'));
+document.getElementById('sound').onclick=async()=>{video.muted=false;try{if(selected)await video.play();show('Sound enabled; ready for commands')}catch(e){show('Allow autoplay with sound in your kiosk app settings')}};
+video.addEventListener('ended',()=>show('Ready for commands'));
+video.addEventListener('error',()=>show('Video error: check the video URL and internet connection'));
+async function apply(c){
+ if(!c || c.ok!==true || typeof c.commandId!=='string' || c.commandId===lastId)return;
+ if(c.action==='stop'){video.pause();try{video.currentTime=0}catch(e){};lastId=c.commandId;show('Ready for commands');return;}
+ if(!['play','replay'].includes(c.action))return;
+ const url=new URL(c.url || VIDEOS[c.videoId]);if(!['https:','http:'].includes(url.protocol))throw Error('Invalid video URL');
+ if(selected!==url.href){selected=url.href;video.src=selected;video.load();}
+ video.currentTime=0;
+ await video.play();lastId=c.commandId;panel.style.opacity='.15';
+}
+async function poll(){
+ if(busy)return;busy=true;
+ const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),8000);
+ try{
+  const url=new URL(ENDPOINT);url.searchParams.set('key',KEY);
+  const response=await fetch(url,{cache:'no-store',signal:abort.signal});
+  if(!response.ok)throw Error('HTTP '+response.status);
+  await apply(await response.json());
+  if(video.paused && !video.error)show('Connected; ready for commands');
+ }catch(e){show('Connection or playback error: '+e.message+' — retrying automatically');}
+ finally{clearTimeout(timer);busy=false;setTimeout(poll,1000)}
+}
+if (ENDPOINT.includes('YOUR-N8N-DOMAIN')) {
+ show('Setup required: set ENDPOINT to your n8n Production Webhook URL in this HTML file.');
+} else {
+ poll();
+}
+</script></html>

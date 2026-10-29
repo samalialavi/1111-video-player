@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="en" dir="ltr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>11:11 Video Player</title>
-<style>html,body{margin:0;width:100%;height:100%;background:#000;color:white;font-family:Arial}video{width:100%;height:100%;object-fit:contain}#panel{position:fixed;bottom:15px;right:15px;padding:12px;background:#151515dd;border-radius:10px;font-size:14px}button{padding:10px;margin:4px;border:0;border-radius:6px;cursor:pointer}#message{max-width:75vw}</style>
+<style>html,body{margin:0;width:100%;height:100%;background:#000;color:white;font-family:Arial}body{overflow:hidden;cursor:none}video{width:100%;height:100%;object-fit:contain;visibility:hidden}video.is-playing{visibility:visible}#panel[hidden]{display:none}body.settings-open{cursor:auto}button:focus{outline:3px solid #ff3b30}#panel{position:fixed;bottom:15px;right:15px;padding:12px;background:#151515dd;border-radius:10px;font-size:14px}button{padding:10px;margin:4px;border:0;border-radius:6px;cursor:pointer}#message{max-width:75vw}</style>
 <video id="video" playsinline preload="auto" muted></video>
-<div id="panel"><div id="message">Connecting…</div><button id="sound">Enable sound</button><button id="fullscreen">Fullscreen</button></div>
+<div id="panel" hidden role="dialog" aria-label="Player settings"><div id="message">Connecting…</div><button id="sound">Enable sound</button><button id="fullscreen">Fullscreen</button><button id="close">Close settings</button></div>
 <script>
 // REQUIRED: paste the Production URL from the n8n Kiosk Player Poll node here.
 const ENDPOINT='https://n8n.sam.ge/webhook/kiosk-player';
@@ -14,19 +14,48 @@ const VIDEOS = {
  v3: 'https://samalialavi.github.io/1111-video-player/videos/video3.mp4'
 };
 let lastId='',selected='',busy=false;
-const show=text=>{message.textContent=text;panel.style.opacity='1'};
+// Common red-button mappings. Your kiosk app must forward remote keys to the page.
+const RED_KEY_CODES = [403, 183];
+const show=text=>{message.textContent=text;};
+function toggleSettings(open=panel.hidden){
+ panel.hidden=!open;
+ document.body.classList.toggle('settings-open',open);
+ if(open)document.getElementById('sound').focus();
+ else document.activeElement?.blur();
+}
+document.getElementById('close').onclick=()=>toggleSettings(false);
+let okTimer=null;
+document.addEventListener('keydown',event=>{
+ if(event.key==='ColorF0Red' || RED_KEY_CODES.includes(event.keyCode) || event.code==='KeyR'){
+  event.preventDefault();if(!event.repeat)toggleSettings();return;
+ }
+ if(!panel.hidden && (event.key==='Escape' || event.key==='BrowserBack')){
+  event.preventDefault();toggleSettings(false);return;
+ }
+ if(panel.hidden && event.key==='Enter' && !event.repeat){
+  okTimer=setTimeout(()=>{okTimer=null;toggleSettings(true);},1500);
+ }
+});
+document.addEventListener('keyup',event=>{if(event.key==='Enter'){clearTimeout(okTimer);okTimer=null;}});
+window.addEventListener('blur',()=>{clearTimeout(okTimer);okTimer=null;});
+function blackScreen(){video.classList.remove('is-playing');}
+video.addEventListener('playing',()=>video.classList.add('is-playing'));
+video.addEventListener('waiting',blackScreen);
+video.addEventListener('stalled',blackScreen);
+
 document.getElementById('fullscreen').onclick=()=>document.documentElement.requestFullscreen?.().catch(()=>show('Enable fullscreen in your kiosk app settings'));
 document.getElementById('sound').onclick=async()=>{video.muted=false;try{if(selected)await video.play();show('Sound enabled; ready for commands')}catch(e){show('Allow autoplay with sound in your kiosk app settings')}};
-video.addEventListener('ended',()=>show('Ready for commands'));
-video.addEventListener('error',()=>show('Video error: check the video URL and internet connection'));
+video.addEventListener('ended',()=>{blackScreen();show('Ready for commands');});
+video.addEventListener('error',()=>{blackScreen();show('Video error: check the video URL and internet connection');});
 async function apply(c){
  if(!c || c.ok!==true || typeof c.commandId!=='string' || c.commandId===lastId)return;
- if(c.action==='stop'){video.pause();try{video.currentTime=0}catch(e){};lastId=c.commandId;show('Ready for commands');return;}
+ if(c.action==='stop'){blackScreen();video.pause();try{video.currentTime=0}catch(e){};lastId=c.commandId;show('Ready for commands');return;}
  if(!['play','replay'].includes(c.action))return;
+ blackScreen();
  const url=new URL(c.url || VIDEOS[c.videoId]);if(!['https:','http:'].includes(url.protocol))throw Error('Invalid video URL');
  if(selected!==url.href){selected=url.href;video.src=selected;video.load();}
  video.currentTime=0;
- await video.play();lastId=c.commandId;panel.style.opacity='.15';
+ await video.play();lastId=c.commandId;
 }
 async function poll(){
  if(busy)return;busy=true;

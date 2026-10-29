@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en" dir="ltr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>11:11 Video Player</title>
 <style>html,body{margin:0;width:100%;height:100%;background:#000;color:white;font-family:Arial}body{overflow:hidden;cursor:none}video{width:100%;height:100%;object-fit:contain;visibility:hidden}video.is-playing{visibility:visible}#panel[hidden]{display:none}body.settings-open{cursor:auto}button:focus{outline:3px solid #ff3b30}#panel{position:fixed;bottom:15px;right:15px;padding:12px;background:#151515dd;border-radius:10px;font-size:14px}button{padding:10px;margin:4px;border:0;border-radius:6px;cursor:pointer}#message{max-width:75vw}</style>
-<video id="video" playsinline preload="auto" muted></video>
+<video id="video" playsinline preload="auto"></video>
 <div id="panel" hidden role="dialog" aria-label="Player settings"><div id="message">Connecting…</div><button id="sound">Enable sound</button><button id="fullscreen">Fullscreen</button><button id="close">Close settings</button></div>
 <script>
 // REQUIRED: paste the Production URL from the n8n Kiosk Player Poll node here.
@@ -14,9 +14,9 @@ const VIDEOS = {
  v3: 'https://samalialavi.github.io/1111-video-player/videos/video3.mp4'
 };
 let lastId='',selected='',busy=false,initialized=false;
-const SOUND_SETTING='1111-player-sound-enabled';
-let soundEnabled=false;
-try{soundEnabled=localStorage.getItem(SOUND_SETTING)==='true';}catch(e){}
+const SOUND_SETTING='1111-player-sound-enabled-v2';
+let soundEnabled=true;
+try{soundEnabled=localStorage.getItem(SOUND_SETTING)!=='false';}catch(e){}
 video.muted=!soundEnabled;
 function updateSoundButton(){document.getElementById('sound').textContent=soundEnabled?'Disable sound':'Enable sound';}
 updateSoundButton();

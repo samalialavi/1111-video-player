@@ -23,6 +23,7 @@ updateSoundButton();
 // Common red-button mappings. Your kiosk app must forward remote keys to the page.
 const RED_KEY_CODES = [403, 183];
 const show=text=>{message.textContent=text;};
+const showError=text=>{show(text);toggleSettings(true);};
 function toggleSettings(open=panel.hidden){
  panel.hidden=!open;
  document.body.classList.toggle('settings-open',open);
@@ -59,9 +60,9 @@ document.getElementById('sound').onclick=()=>{
  show(soundEnabled?'Sound enabled and saved':'Sound disabled and saved');
 };
 video.addEventListener('ended',()=>{blackScreen();show('Ready for commands');});
-video.addEventListener('error',()=>{blackScreen();show('Video error: check the video URL and internet connection');});
+video.addEventListener('error',()=>{blackScreen();showError('Video error '+(video.error?.code || '')+': '+(video.currentSrc || 'No URL'));});
 async function apply(c){
- if(!c || c.ok!==true || typeof c.commandId!=='string')return;
+ if(!c || c.ok!==true || typeof c.commandId!=='string')throw Error('Invalid player response: expected ok and commandId');
  // First successful response is a baseline, never a playback request.
  // Reset this baseline on each page load, even when the server has an old play command.
  if(!initialized){initialized=true;lastId=c.commandId;blackScreen();show('Connected; ready for a new command');return;}
@@ -69,10 +70,19 @@ async function apply(c){
  if(c.action==='stop'){blackScreen();video.pause();try{video.currentTime=0}catch(e){};lastId=c.commandId;show('Ready for commands');return;}
  if(!['play','replay'].includes(c.action))return;
  blackScreen();
- const url=new URL(c.url || VIDEOS[c.videoId]);if(!['https:','http:'].includes(url.protocol))throw Error('Invalid video URL');
+ const candidate=c.url && !/YOUR-USER|YOUR-REPO/.test(c.url)?c.url:VIDEOS[c.videoId];
+ if(!candidate)throw Error('No video URL configured');
+ const url=new URL(candidate);if(!['https:','http:'].includes(url.protocol))throw Error('Invalid video URL');
  if(selected!==url.href){selected=url.href;video.src=selected;video.load();}
  video.currentTime=0;
- await video.play();lastId=c.commandId;
+ try{await video.play();}
+ catch(error){
+  if(error.name!=='NotAllowedError')throw error;
+  video.muted=true;
+  await video.play();
+  showError('Playback started muted. Enable autoplay with sound in the kiosk settings.');
+ }
+ lastId=c.commandId;
 }
 async function poll(){
  if(busy)return;busy=true;
@@ -83,7 +93,7 @@ async function poll(){
   if(!response.ok)throw Error('HTTP '+response.status);
   await apply(await response.json());
   if(video.paused && !video.error)show('Connected; ready for commands');
- }catch(e){show('Connection or playback error: '+e.message+' — retrying automatically');}
+ }catch(e){showError('Connection or playback error: '+e.message+' — retrying automatically');}
  finally{clearTimeout(timer);busy=false;setTimeout(poll,1000)}
 }
 if (ENDPOINT.includes('YOUR-N8N-DOMAIN')) {

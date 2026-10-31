@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en" dir="ltr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>11:11 Video Player</title>
 <style>html,body{margin:0;width:100%;height:100%;background:#000;color:white;font-family:Arial}body{overflow:hidden;cursor:none}video{width:100%;height:100%;object-fit:contain;visibility:hidden}video.is-playing{visibility:visible}#panel[hidden]{display:none}body.settings-open{cursor:auto}button:focus{outline:3px solid #ff3b30}#panel{position:fixed;bottom:15px;right:15px;padding:12px;background:#151515dd;border-radius:10px;font-size:14px}button{padding:10px;margin:4px;border:0;border-radius:6px;cursor:pointer}#message{max-width:75vw}</style>
-<video id="video" playsinline preload="auto"></video>
+<video id="video" playsinline preload="none"></video>
 <div id="panel" hidden role="dialog" aria-label="Player settings"><div id="message">Connecting…</div><button id="sound">Enable sound</button><button id="fullscreen">Fullscreen</button><button id="close">Close settings</button></div>
 <script>
 // REQUIRED: paste the Production URL from the n8n Kiosk Player Poll node here.
@@ -14,8 +14,16 @@ const VIDEOS = {
  v3: 'https://samalialavi.github.io/1111-video-player/videos/video3.mp4'
 };
 let lastId='',selected='',busy=false,initialized=false;
+let playbackRequested=false;
+video.autoplay=false;
+video.removeAttribute('autoplay');
+video.pause();
+video.removeAttribute('src');
+video.load();
+// Fully may request autoplay. Never allow it before a new command.
+video.addEventListener('play',()=>{if(!playbackRequested){video.pause();blackScreen();}});
 const SOUND_SETTING='1111-player-sound-enabled-v2';
-// Start with sound on every page load; do not restore old muted settings.
+// Sound enabled; playback requires a new Telegram command.
 let soundEnabled=true;
 video.defaultMuted=false;
 video.muted=false;
@@ -47,7 +55,7 @@ document.addEventListener('keydown',event=>{
 document.addEventListener('keyup',event=>{if(event.key==='Enter'){clearTimeout(okTimer);okTimer=null;}});
 window.addEventListener('blur',()=>{clearTimeout(okTimer);okTimer=null;});
 function blackScreen(){video.classList.remove('is-playing');}
-video.addEventListener('playing',()=>video.classList.add('is-playing'));
+video.addEventListener('playing',()=>{if(playbackRequested)video.classList.add('is-playing');else{video.pause();blackScreen();}});
 video.addEventListener('waiting',blackScreen);
 video.addEventListener('stalled',blackScreen);
 
@@ -56,27 +64,29 @@ document.getElementById('sound').onclick=async()=>{
  soundEnabled=!soundEnabled;
  video.muted=!soundEnabled;
  try{localStorage.setItem(SOUND_SETTING,String(soundEnabled));}
- catch(e){}
+ catch(e){show('Browser storage is unavailable; sound preference cannot be saved.');updateSoundButton();return;}
  updateSoundButton();
- if(selected && video.paused){
+ if(playbackRequested && selected && video.paused){
   try{await video.play();}catch(error){showError('Playback blocked: allow autoplay in your kiosk app. '+error.message);return;}
  }
  show(soundEnabled?'Sound enabled for this session':'Sound disabled');
 };
-video.addEventListener('ended',()=>{blackScreen();show('Ready for commands');});
+video.addEventListener('ended',()=>{playbackRequested=false;blackScreen();show('Ready for commands');});
 video.addEventListener('error',()=>{blackScreen();showError('Video error '+(video.error?.code || '')+': '+(video.currentSrc || 'No URL'));});
 async function apply(c){
  if(!c || c.ok!==true || typeof c.commandId!=='string')throw Error('Invalid player response: expected ok and commandId');
  // First successful response is a baseline, never a playback request.
  // Reset this baseline on each page load, even when the server has an old play command.
- if(!initialized){initialized=true;lastId=c.commandId;blackScreen();show('Audio v4; connected; ready for a new command');return;}
+ if(!initialized){initialized=true;lastId=c.commandId;playbackRequested=false;video.pause();blackScreen();show('Audio v5; ready for a NEW command');return;}
  if(c.commandId===lastId)return;
- if(c.action==='stop'){blackScreen();video.pause();try{video.currentTime=0}catch(e){};lastId=c.commandId;show('Ready for commands');return;}
+ if(c.action==='stop'){playbackRequested=false;blackScreen();video.pause();try{video.currentTime=0}catch(e){};lastId=c.commandId;show('Ready for commands');return;}
  if(!['play','replay'].includes(c.action))return;
  blackScreen();
  const candidate=c.url && !/YOUR-USER|YOUR-REPO/.test(c.url)?c.url:VIDEOS[c.videoId];
  if(!candidate)throw Error('No video URL configured');
  const url=new URL(candidate);if(!['https:','http:'].includes(url.protocol))throw Error('Invalid video URL');
+ playbackRequested=true;
+ video.autoplay=false;video.removeAttribute('autoplay');
  if(selected!==url.href){selected=url.href;video.src=selected;video.load();}
  video.currentTime=0;
  try{await video.play();}
@@ -85,7 +95,7 @@ async function apply(c){
   video.muted=true;
   await video.play();
   soundEnabled=false;updateSoundButton();
-  showError('Audio v4: browser blocked autoplay with sound; playing muted. Allow autoplay in the browser or kiosk app.');
+  showError('Audio v5: browser blocked sound; enable Autoplay Videos in Fully and reload.');
  }
  lastId=c.commandId;
 }
@@ -97,7 +107,7 @@ async function poll(){
   const response=await fetch(url,{cache:'no-store',signal:abort.signal});
   if(!response.ok)throw Error('HTTP '+response.status);
   await apply(await response.json());
-  if(video.paused && !video.error)show('Audio v4; connected; ready for commands');
+  if(video.paused && !video.error)show('Audio v5; ready for a NEW command');
  }catch(e){showError('Connection or playback error: '+e.message+' — retrying automatically');}
  finally{clearTimeout(timer);busy=false;setTimeout(poll,1000)}
 }

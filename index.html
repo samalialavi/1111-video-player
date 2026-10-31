@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en" dir="ltr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>11:11 Video Player</title>
 <style>html,body{margin:0;width:100%;height:100%;background:#000;color:white;font-family:Arial}body{overflow:hidden;cursor:none}video{width:100%;height:100%;object-fit:contain;visibility:hidden}video.is-playing{visibility:visible}#panel[hidden]{display:none}body.settings-open{cursor:auto}button:focus{outline:3px solid #ff3b30}#panel{position:fixed;bottom:15px;right:15px;padding:12px;background:#151515dd;border-radius:10px;font-size:14px}button{padding:10px;margin:4px;border:0;border-radius:6px;cursor:pointer}#message{max-width:75vw}</style>
-<video id="video" playsinline autoplay muted preload="auto"></video>
+<video id="video" playsinline preload="auto"></video>
 <div id="panel" hidden role="dialog" aria-label="Player settings"><div id="message">Connecting…</div><button id="sound">Enable sound</button><button id="fullscreen">Fullscreen</button><button id="close">Close settings</button></div>
 <script>
 // REQUIRED: paste the Production URL from the n8n Kiosk Player Poll node here.
@@ -15,11 +15,10 @@ const VIDEOS = {
 };
 let lastId='',selected='',busy=false,initialized=false;
 const SOUND_SETTING='1111-player-sound-enabled-v2';
-// Begin muted so a fresh page can play before any key or click.
-// Sound is enabled by an explicit gesture on each page load.
-let soundEnabled=false;
-video.defaultMuted=true;
-video.muted=true;
+// Start with sound on every page load; do not restore old muted settings.
+let soundEnabled=true;
+video.defaultMuted=false;
+video.muted=false;
 function updateSoundButton(){document.getElementById('sound').textContent=soundEnabled?'Disable sound':'Enable sound';}
 updateSoundButton();
 // Common red-button mappings. Your kiosk app must forward remote keys to the page.
@@ -57,7 +56,7 @@ document.getElementById('sound').onclick=async()=>{
  soundEnabled=!soundEnabled;
  video.muted=!soundEnabled;
  try{localStorage.setItem(SOUND_SETTING,String(soundEnabled));}
- catch(e){show('Browser storage is unavailable; sound preference cannot be saved.');updateSoundButton();return;}
+ catch(e){}
  updateSoundButton();
  if(selected && video.paused){
   try{await video.play();}catch(error){showError('Playback blocked: allow autoplay in your kiosk app. '+error.message);return;}
@@ -70,7 +69,7 @@ async function apply(c){
  if(!c || c.ok!==true || typeof c.commandId!=='string')throw Error('Invalid player response: expected ok and commandId');
  // First successful response is a baseline, never a playback request.
  // Reset this baseline on each page load, even when the server has an old play command.
- if(!initialized){initialized=true;lastId=c.commandId;blackScreen();show('Connected; ready for a new command');return;}
+ if(!initialized){initialized=true;lastId=c.commandId;blackScreen();show('Audio v4; connected; ready for a new command');return;}
  if(c.commandId===lastId)return;
  if(c.action==='stop'){blackScreen();video.pause();try{video.currentTime=0}catch(e){};lastId=c.commandId;show('Ready for commands');return;}
  if(!['play','replay'].includes(c.action))return;
@@ -86,7 +85,7 @@ async function apply(c){
   video.muted=true;
   await video.play();
   soundEnabled=false;updateSoundButton();
-  show('Playing muted; enable sound from settings if needed.');
+  showError('Audio v4: browser blocked autoplay with sound; playing muted. Allow autoplay in the browser or kiosk app.');
  }
  lastId=c.commandId;
 }
@@ -98,7 +97,7 @@ async function poll(){
   const response=await fetch(url,{cache:'no-store',signal:abort.signal});
   if(!response.ok)throw Error('HTTP '+response.status);
   await apply(await response.json());
-  if(video.paused && !video.error)show('Connected; ready for commands');
+  if(video.paused && !video.error)show('Audio v4; connected; ready for commands');
  }catch(e){showError('Connection or playback error: '+e.message+' — retrying automatically');}
  finally{clearTimeout(timer);busy=false;setTimeout(poll,1000)}
 }

@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en" dir="ltr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>11:11 Video Player</title>
 <style>html,body{margin:0;width:100%;height:100%;background:#000;color:white;font-family:Arial}body{overflow:hidden;cursor:none}video{width:100%;height:100%;object-fit:contain;visibility:hidden}video.is-playing{visibility:visible}#panel[hidden]{display:none}body.settings-open{cursor:auto}button:focus{outline:3px solid #ff3b30}#panel{position:fixed;bottom:15px;right:15px;padding:12px;background:#151515dd;border-radius:10px;font-size:14px}button{padding:10px;margin:4px;border:0;border-radius:6px;cursor:pointer}#message{max-width:75vw}</style>
-<video id="video" playsinline preload="auto"></video>
+<video id="video" playsinline autoplay muted preload="auto"></video>
 <div id="panel" hidden role="dialog" aria-label="Player settings"><div id="message">Connecting…</div><button id="sound">Enable sound</button><button id="fullscreen">Fullscreen</button><button id="close">Close settings</button></div>
 <script>
 // REQUIRED: paste the Production URL from the n8n Kiosk Player Poll node here.
@@ -15,9 +15,11 @@ const VIDEOS = {
 };
 let lastId='',selected='',busy=false,initialized=false;
 const SOUND_SETTING='1111-player-sound-enabled-v2';
-let soundEnabled=true;
-try{soundEnabled=localStorage.getItem(SOUND_SETTING)!=='false';}catch(e){}
-video.muted=!soundEnabled;
+// Begin muted so a fresh page can play before any key or click.
+// Sound is enabled by an explicit gesture on each page load.
+let soundEnabled=false;
+video.defaultMuted=true;
+video.muted=true;
 function updateSoundButton(){document.getElementById('sound').textContent=soundEnabled?'Disable sound':'Enable sound';}
 updateSoundButton();
 // Common red-button mappings. Your kiosk app must forward remote keys to the page.
@@ -51,13 +53,16 @@ video.addEventListener('waiting',blackScreen);
 video.addEventListener('stalled',blackScreen);
 
 document.getElementById('fullscreen').onclick=()=>document.documentElement.requestFullscreen?.().catch(()=>show('Enable fullscreen in your kiosk app settings'));
-document.getElementById('sound').onclick=()=>{
+document.getElementById('sound').onclick=async()=>{
  soundEnabled=!soundEnabled;
  video.muted=!soundEnabled;
  try{localStorage.setItem(SOUND_SETTING,String(soundEnabled));}
  catch(e){show('Browser storage is unavailable; sound preference cannot be saved.');updateSoundButton();return;}
  updateSoundButton();
- show(soundEnabled?'Sound enabled and saved':'Sound disabled and saved');
+ if(selected && video.paused){
+  try{await video.play();}catch(error){showError('Playback blocked: allow autoplay in your kiosk app. '+error.message);return;}
+ }
+ show(soundEnabled?'Sound enabled for this session':'Sound disabled');
 };
 video.addEventListener('ended',()=>{blackScreen();show('Ready for commands');});
 video.addEventListener('error',()=>{blackScreen();showError('Video error '+(video.error?.code || '')+': '+(video.currentSrc || 'No URL'));});
@@ -80,7 +85,8 @@ async function apply(c){
   if(error.name!=='NotAllowedError')throw error;
   video.muted=true;
   await video.play();
-  showError('Playback started muted. Enable autoplay with sound in the kiosk settings.');
+  soundEnabled=false;updateSoundButton();
+  show('Playing muted; enable sound from settings if needed.');
  }
  lastId=c.commandId;
 }
